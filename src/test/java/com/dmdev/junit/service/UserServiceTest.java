@@ -1,12 +1,17 @@
 package com.dmdev.junit.service;
 
 import com.dmdev.junit.dto.User;
+import org.hamcrest.MatcherAssert;
+import org.hamcrest.collection.IsEmptyCollection;
+import org.hamcrest.collection.IsMapContaining;
 import org.junit.jupiter.api.*;
 
 
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.collection.IsEmptyCollection.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 @TestInstance(TestInstance.Lifecycle.PER_METHOD)
@@ -42,8 +47,10 @@ public class UserServiceTest {
 
         var users = userService.getAll();
 
+
+        /*MatcherAssert.assertThat(users, empty());*/
         assertThat(users).hasSize(2);
-        assertEquals(2, users.size());
+        /*assertEquals(2, users.size());*/
     }
 
     @Test
@@ -51,9 +58,10 @@ public class UserServiceTest {
         userService.add(IVAN);
 
         Optional<User> user = userService.login(IVAN.getUserName(), IVAN.getPassword());
-
-        assertTrue(user.isPresent());
-        user.ifPresent(maybeUser -> assertEquals(IVAN, maybeUser));
+        assertThat(user).isPresent();
+        user.ifPresent(maybeUser -> assertThat(user).isEqualTo(IVAN));
+        /*assertTrue(user.isPresent());*/
+        /*user.ifPresent(maybeUser -> assertEquals(IVAN, maybeUser));*/
     }
 
     @Test
@@ -72,6 +80,19 @@ public class UserServiceTest {
         var maybeUser = userService.login("Dummy", "111");
 
         assertTrue(maybeUser.isEmpty());
+    }
+
+    @Test
+    void usersConvertedToMapById() {
+        userService.add(IVAN, PETR);
+
+        Map<Integer, User> users = userService.getAllConvertedById();
+
+        /*MatcherAssert.assertThat(users, IsMapContaining.hasKey(IVAN.getId()));*/
+        assertAll(
+                () -> assertThat(users).containsKeys(IVAN.getId(), PETR.getId()),
+                () -> assertThat(users).containsValues(IVAN, PETR)
+        );
     }
 
     @AfterEach
