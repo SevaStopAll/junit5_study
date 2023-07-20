@@ -1,31 +1,47 @@
 package com.dmdev.junit.service;
 
+import com.dmdev.junit.dao.UserDao;
 import com.dmdev.junit.dto.User;
-import com.dmdev.junit.parameresolver.UserServiceParamResolver;
-import org.hamcrest.MatcherAssert;
-import org.hamcrest.collection.IsEmptyCollection;
-import org.hamcrest.collection.IsMapContaining;
+import com.dmdev.junit.extension.*;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.junit.jupiter.api.function.Executable;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.*;
+import org.mockito.*;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 
+import java.io.IOException;
+import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.hamcrest.collection.IsEmptyCollection.*;
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 @TestInstance(TestInstance.Lifecycle.PER_METHOD)
 @ExtendWith( {
-        UserServiceParamResolver.class
+        UserServiceParamResolver.class,
+  /*      GlobalExtension.class,*/
+        PostProcessingExtension.class,
+        ConditionalExtension.class,
+        MockitoExtension.class
+        /*ThrowableExtension.class*/
 })
 public class UserServiceTest {
 
     private static final User IVAN = User.of(1, "Ivan", "123");
     private static final User PETR = User.of(2, "Petr", "111");
+
+    @Captor
+    private ArgumentCaptor<Integer> argumentCaptor;
+    @InjectMocks
     private UserService userService;
+    @Mock(lenient = true)
+    private UserDao userDao;
+
 
     UserServiceTest(TestInfo testInfo) {
         System.out.println();
@@ -37,13 +53,44 @@ public class UserServiceTest {
     }
 
     @BeforeEach
-    void prepare(UserService userService) {
+    void prepare() {
         System.out.println("Before each " + this);
-         this.userService = userService;
+/*        lenient().when(userDao.delete(IVAN.getId())).thenReturn(true);*/
+        doReturn(true).when(userDao).delete(IVAN.getId());
+/*        Mockito.mock(UserDao.class, withSettings().lenient())*/
+/*        this.userDao = Mockito.spy(new UserDao());
+         this.userService = new UserService(userDao);*/
     }
 
     @Test
-    void usersEmptyIfNoUserAdded() {
+    void throwExceptionIfDatabaseIsNotAvailable() {
+        doThrow(RuntimeException.class).when(userDao).delete(IVAN.getId());
+        assertThrows(RuntimeException.class, () -> userService.delete(IVAN.getId()));
+    }
+
+    @Test
+    void shouldDeleteExistedUser() {
+        userService.add(IVAN);
+/*        Mockito.doReturn(true).when(userDao).delete(IVAN.getId());*/
+        /*Mockito.doReturn(true).when(userDao).delete(Mockito.any());*/
+
+        /*Mockito.when(userDao.delete(IVAN.getId())).thenReturn(true);*/
+
+        /*ArgumentCaptor<Integer> integerArgumentCaptor = ArgumentCaptor.forClass(Integer.class);*/
+        boolean delete = userService.delete(IVAN.getId());
+
+        verify(userDao).delete(argumentCaptor.capture());
+        assertThat(argumentCaptor.getValue()).isEqualTo(IVAN.getId());
+        /*Mockito.verifyNoInteractions(userDao);*/
+
+        assertThat(delete).isTrue();
+    }
+
+    @Test
+    void usersEmptyIfNoUserAdded() throws IOException {
+/*        if (true) {
+            throw new RuntimeException();
+        }*/
         System.out.println("Test1 " + this);
         var users = userService.getAll();
         assertTrue(users.isEmpty(), () -> "users list should be empty");
@@ -87,7 +134,7 @@ public class UserServiceTest {
     class LoginTest {
         @Test
         void loginSuccessIfUserExists() {
-            userService.add(IVAN);
+             userService.add(IVAN);
 
             Optional<User> user = userService.login(IVAN.getUserName(), IVAN.getPassword());
             assertThat(user).isPresent();
@@ -98,6 +145,7 @@ public class UserServiceTest {
 
         @Test
         void loginFailIfPasswordIsNotCorrect() {
+
             userService.add(IVAN);
 
             var maybeUser = userService.login(IVAN.getUserName(), "111");
@@ -106,6 +154,15 @@ public class UserServiceTest {
         }
 
         @Test
+        void checkLoginFunctionalityPerfomance() {
+            var result = assertTimeout(Duration.ofMillis(200L), () -> {
+                Thread.sleep(250L);
+                return userService.login("dummy", IVAN.getPassword());
+            });
+        }
+
+        @Test
+        /*@RepeatedTest(value = 5, name =RepeatedTest.LONG_DISPLAY_NAME)*/
         void loginFailIfUserDoesNotExist() {
             userService.add(IVAN);
 
@@ -121,5 +178,25 @@ public class UserServiceTest {
                     () -> assertThrows(IllegalArgumentException.class, () -> userService.login("dummy", null))
             );
         }
+
+        @ParameterizedTest(name = "{arguments} test")
+        @MethodSource("com.dmdev.junit.service.UserServiceTest#getArgumentsForLoginTest")
+        @DisplayName("login param test")
+        void loginParameterizedTest(String username, String password, Optional<User> user) {
+            userService.add(IVAN, PETR);
+
+            Optional<User> maybeUser = userService.login(username, password);
+            assertThat(maybeUser).isEqualTo(user);
+        }
+
+    }
+
+    static Stream<Arguments> getArgumentsForLoginTest() {
+        return Stream.of(
+                Arguments.of("Ivan", "123", Optional.of(IVAN)),
+                Arguments.of("Petr", "111", Optional.of(PETR)),
+                        Arguments.of("Petr", "dummy", Optional.empty()),
+                                Arguments.of("dummy", "123", Optional.empty())
+                );
     }
 }
