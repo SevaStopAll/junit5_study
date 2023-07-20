@@ -5,6 +5,7 @@ import org.hamcrest.MatcherAssert;
 import org.hamcrest.collection.IsEmptyCollection;
 import org.hamcrest.collection.IsMapContaining;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.function.Executable;
 
 
 import java.util.Map;
@@ -59,7 +60,7 @@ public class UserServiceTest {
 
         Optional<User> user = userService.login(IVAN.getUserName(), IVAN.getPassword());
         assertThat(user).isPresent();
-        user.ifPresent(maybeUser -> assertThat(user).isEqualTo(IVAN));
+        user.ifPresent(maybeUser -> assertThat(maybeUser).isEqualTo(IVAN));
         /*assertTrue(user.isPresent());*/
         /*user.ifPresent(maybeUser -> assertEquals(IVAN, maybeUser));*/
     }
@@ -93,6 +94,14 @@ public class UserServiceTest {
                 () -> assertThat(users).containsKeys(IVAN.getId(), PETR.getId()),
                 () -> assertThat(users).containsValues(IVAN, PETR)
         );
+    }
+
+    @Test
+    void throwExceptionIfUsernameOrPasswordIsNull() {
+            assertAll(
+                    () -> assertThrows(IllegalArgumentException.class, () -> userService.login(null, "dummy")),
+                    () -> assertThrows(IllegalArgumentException.class, () -> userService.login("dummy", null))
+            );
     }
 
     @AfterEach
